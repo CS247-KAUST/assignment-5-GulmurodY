@@ -102,9 +102,18 @@ void reset_rendering_props( void );
 
 // TODO: define data arrays, VAO and VBO
 // Hint: you need one for the glyphs, streamlines, pathlines
+GLuint glyphVAO, glyphVBO;
+
+std::vector<GLuint> streamlineVAOs, streamlineVBOs;
+std::vector<int>    streamlineVertexCounts;
+
+std::vector<GLuint> pathlineVAOs,   pathlineVBOs;
+std::vector<int>    pathlineVertexCounts;
 
 // TODO: define colormap variables
 // Hint: you need a colormap mode (off/rainbow/cool-warm) and a blend factor
+int   colormapMode;
+float blendFactor;
 
 // make quad to load texture to
 VBOQuad quad;
