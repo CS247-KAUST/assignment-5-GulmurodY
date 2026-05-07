@@ -494,12 +494,16 @@ void render() {
 
     // TODO: pass colormap uniforms to shader before drawing the quad
     // Hint: set colormapMode and blendFactor uniforms here
+    vectorProgram.setUniform("colormapMode", colormapMode);
+    vectorProgram.setUniform("blendFactor",  blendFactor);
 
     quad.render();
     glDisable( GL_TEXTURE_2D );
 
     // TODO: reset colormap mode to 0 before drawing overlays
     // so that glyphs/streamlines/pathlines use solid colors
+    vectorProgram.setUniform("colormapMode", 0);
+    vectorProgram.setUniform("blendFactor",  1.0f);
 
     // TODO: draw glyphs, streamlines, pathlines
 
