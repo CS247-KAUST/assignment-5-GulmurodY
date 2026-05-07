@@ -36,6 +36,7 @@ bool en_pathline;
 
 int sampling_rate;
 float dt;
+bool useRK2;
 
 
 

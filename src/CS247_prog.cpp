@@ -113,6 +113,39 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
             //   - adjust blend factor (increase/decrease between 0.0 and 1.0)
             //   - toggle integration method (Euler/RK2)
             //   - clear all seeds
+            case GLFW_KEY_C:
+                colormapMode = (colormapMode + 1) % 3;
+                fprintf(stderr, "Colormap mode: %d (0=off, 1=rainbow, 2=cool-warm).\n", colormapMode);
+                break;
+            case GLFW_KEY_V:
+                blendFactor = std::min(blendFactor + 0.1f, 1.0f);
+                fprintf(stderr, "Blend factor: %.1f.\n", blendFactor);
+                break;
+            case GLFW_KEY_X:
+                blendFactor = std::max(blendFactor - 0.1f, 0.0f);
+                fprintf(stderr, "Blend factor: %.1f.\n", blendFactor);
+                break;
+            case GLFW_KEY_M:
+                useRK2 = !useRK2;
+                fprintf(stderr, "Integration method: %s.\n", useRK2 ? "RK2" : "Euler");
+                break;
+            case GLFW_KEY_D:
+                for (int i = 0; i < (int)streamlineVAOs.size(); i++) {
+                    glDeleteVertexArrays(1, &streamlineVAOs[i]);
+                    glDeleteBuffers(1, &streamlineVBOs[i]);
+                }
+                streamlineVAOs.clear();
+                streamlineVBOs.clear();
+                streamlineVertexCounts.clear();
+                for (int i = 0; i < (int)pathlineVAOs.size(); i++) {
+                    glDeleteVertexArrays(1, &pathlineVAOs[i]);
+                    glDeleteBuffers(1, &pathlineVBOs[i]);
+                }
+                pathlineVAOs.clear();
+                pathlineVBOs.clear();
+                pathlineVertexCounts.clear();
+                fprintf(stderr, "Cleared all seeds.\n");
+                break;
             case GLFW_KEY_Q:
             case GLFW_KEY_ESCAPE:
                 exit( 0 );
@@ -131,6 +164,10 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
                                  "-, decrease sampling rate.\n"
                                  "i, increase dt.\n"
                                  "k, decrease dt.\n"
+                                 "c, cycle colormap (off/rainbow/cool-warm).\n"
+                                 "v/x, increase/decrease blend factor.\n"
+                                 "m, toggle Euler/RK2 integration.\n"
+                                 "d, clear all seeds.\n"
                                  "q, <esc> - Quit\n",
                          filenames[0], filenames[1], filenames[2] );
                 break;
@@ -523,6 +560,9 @@ int main(int argc, char** argv)
     en_pathline = false;
     sampling_rate = 15;
     dt = 0.1;
+    useRK2 = false;
+    colormapMode = 0;
+    blendFactor = 1.0f;
 
     reset_rendering_props();
 
