@@ -464,8 +464,8 @@ void setup() {
 
 
     // compile & link shader
-    vectorProgram.compileShader("../../../shaders/vertex.vs");
-    vectorProgram.compileShader("../../../shaders/fragment.fs");
+    vectorProgram.compileShader("../shaders/vertex.vs");
+    vectorProgram.compileShader("../shaders/fragment.fs");
     vectorProgram.link();
 
     // make quad to render texture
@@ -529,9 +529,9 @@ int main(int argc, char** argv)
     clearColor = 0;
 
 
-    filenames[ 0 ] = "../../../data/block/c_block";
-    filenames[ 1 ] = "../../../data/tube/tube";
-    filenames[ 2 ] = "../../../data/hurricane/hurricane_p_tc";
+    filenames[ 0 ] = "../data/block/c_block";
+    filenames[ 1 ] = "../data/tube/tube";
+    filenames[ 2 ] = "../data/hurricane/hurricane_p_tc";
 
 
 
@@ -542,6 +542,12 @@ int main(int argc, char** argv)
     if (!glfwInit()) {
         exit(EXIT_FAILURE);
     }
+
+    // request OpenGL 4.1 Core Profile (highest macOS supports)
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
     // init glfw window
     window = glfwCreateWindow(gWindowWidth, gWindowHeight, "AMCS/CS247 Scientific Visualization", nullptr, nullptr);

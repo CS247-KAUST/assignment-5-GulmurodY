@@ -61,4 +61,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR})
 
 # --- 5. LINK LIBRARIES ---
-target_link_libraries(${PROJECT_NAME} glfw opengl32 glm::glm)
+if(APPLE)
+    find_library(OPENGL_LIBRARY OpenGL)
+    target_link_libraries(${PROJECT_NAME} glfw ${OPENGL_LIBRARY} glm::glm)
+else()
+    target_link_libraries(${PROJECT_NAME} glfw opengl32 glm::glm)
+endif()
