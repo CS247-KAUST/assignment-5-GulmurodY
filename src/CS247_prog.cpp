@@ -473,6 +473,8 @@ void setup() {
     quad.init();
 
     // TODO: glyph/streamlines/pathlines VAO and VBO
+    glGenVertexArrays(1, &glyphVAO);
+    glGenBuffers(1, &glyphVBO);
 }
 
 // rendering
