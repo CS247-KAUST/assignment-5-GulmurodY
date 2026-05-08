@@ -543,6 +543,9 @@ void render() {
     vectorProgram.setUniform("blendFactor",  1.0f);
 
     // TODO: draw glyphs, streamlines, pathlines
+    if(en_arrow) {
+        drawGlyphs();
+    }
 
 }
 
@@ -716,4 +719,60 @@ void drawGlyphs() {
     // TODO: draw arrows/glyphs
     // Hint: iterate over grid with sampling_rate stride, compute arrow geometry
     //       (shaft + arrowhead) in NDC, upload to VBO, draw with GL_LINES
+    if (!en_arrow || !scalar_data_loaded) return;
+
+    std::vector<float> verts;
+
+    float cellW = (float)sampling_rate / (vol_dim[0] - 1) * 2.0f;
+    float cellH = (float)sampling_rate / (vol_dim[1] - 1) * 2.0f;
+    float arrowLen = std::min(cellW, cellH) * 0.45f;
+    float headLen  = arrowLen * 0.35f;
+    float headAngle = 0.45f;
+
+    for (int y = 0; y < (int)vol_dim[1]; y += sampling_rate) {
+        for (int x = 0; x < (int)vol_dim[0]; x += sampling_rate) {
+
+            glm::vec2 v   = getVector(x, y, loaded_timestep);
+            float     mag = glm::length(v);
+            if (mag < 1e-6f) continue;
+
+            glm::vec2 dir = glm::normalize(v);
+
+            float nx = (float)x / (vol_dim[0] - 1) * 2.0f - 1.0f;
+            float ny = (float)y / (vol_dim[1] - 1) * 2.0f - 1.0f;
+
+            float tipX = nx + dir.x * arrowLen;
+            float tipY = ny + dir.y * arrowLen;
+
+            float cosA =  cosf(headAngle), sinA = sinf(headAngle);
+            float rx = -dir.x, ry = -dir.y;
+
+            float lx =  rx*cosA - ry*sinA,  ly =  rx*sinA + ry*cosA;  // +angle
+            float wx =  rx*cosA + ry*sinA,  wy = -rx*sinA + ry*cosA;  // -angle
+
+            verts.insert(verts.end(), { nx,  ny,  0, 0,0,0 });
+            verts.insert(verts.end(), { tipX, tipY, 0, 0,0,0 });
+            verts.insert(verts.end(), { tipX, tipY, 0, 0,0,0 });
+            verts.insert(verts.end(), { tipX + lx*headLen, tipY + ly*headLen, 0, 0,0,0 });
+            verts.insert(verts.end(), { tipX, tipY, 0, 0,0,0 });
+            verts.insert(verts.end(), { tipX + wx*headLen, tipY + wy*headLen, 0, 0,0,0 });
+        }
+    }
+
+    if (verts.empty()) return;
+
+    glBindVertexArray(glyphVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, glyphVBO);
+    glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(float), verts.data(), GL_DYNAMIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6*sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6*sizeof(float), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    vectorProgram.setUniform("vertexColor", glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    vectorProgram.setUniform("model", glm::mat4(1.0f));
+
+    glDrawArrays(GL_LINES, 0, (int)verts.size() / 6);
+    glBindVertexArray(0);
 }
