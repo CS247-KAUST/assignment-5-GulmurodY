@@ -655,6 +655,44 @@ int main(int argc, char** argv)
 // TODO: define any useful functions you might need.
 //  e.g., indexing, linear interpolation ..etc
 
+glm::vec2 getVector(int x, int y, int t) {
+    int j = y * vol_dim[0] + x;
+    float vx = vector_array[3 * j + 0 + 3 * t * data_size];
+    float vy = vector_array[3 * j + 1 + 3 * t * data_size];
+    return glm::vec2(vx, vy);
+}
+
+
+glm::vec2 bilinearInterp(float fx, float fy, int t) {
+    // clamp to valid grid range
+    fx = std::max(0.0f, std::min(fx, (float)(vol_dim[0] - 1)));
+    fy = std::max(0.0f, std::min(fy, (float)(vol_dim[1] - 1)));
+
+    int x0 = (int)fx,  x1 = std::min(x0 + 1, (int)vol_dim[0] - 1);
+    int y0 = (int)fy,  y1 = std::min(y0 + 1, (int)vol_dim[1] - 1);
+    float sx = fx - x0,  sy = fy - y0;   // fractional parts [0,1]
+
+    glm::vec2 v00 = getVector(x0, y0, t);
+    glm::vec2 v10 = getVector(x1, y0, t);
+    glm::vec2 v01 = getVector(x0, y1, t);
+    glm::vec2 v11 = getVector(x1, y1, t);
+
+    glm::vec2 bot = glm::mix(v00, v10, sx);   
+    glm::vec2 top = glm::mix(v01, v11, sx);  
+    return glm::mix(bot, top, sy);            
+}
+
+glm::vec2 trilinearInterp(float fx, float fy, float ft) {
+    ft = std::max(0.0f, std::min(ft, (float)(num_timesteps - 1)));
+
+    int t0 = (int)ft,  t1 = std::min(t0 + 1, num_timesteps - 1);
+    float st = ft - t0;   // fractional time [0,1]
+
+    glm::vec2 v_t0 = bilinearInterp(fx, fy, t0);
+    glm::vec2 v_t1 = bilinearInterp(fx, fy, t1);
+    return glm::mix(v_t0, v_t1, st);        
+}
+
 
 void computeStreamline(int x, int y)
 {
