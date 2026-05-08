@@ -425,12 +425,11 @@ void DownloadScalarFieldAsTexture( void )
     // set necessary texture parameters
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP );
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
 
     int datasize = vol_dim[0] * vol_dim[1];
-    //download texture in correct format
-    glTexImage2D( GL_TEXTURE_2D, 0,  GL_INTENSITY16, vol_dim[ 0 ], vol_dim[ 1 ], 0, GL_LUMINANCE, GL_FLOAT, &scalar_fields[ (loaded_timestep + current_scalar_field * num_timesteps)*datasize ] );
+    glTexImage2D( GL_TEXTURE_2D, 0, GL_R32F, vol_dim[ 0 ], vol_dim[ 1 ], 0, GL_RED, GL_FLOAT, &scalar_fields[ (loaded_timestep + current_scalar_field * num_timesteps)*datasize ] );
 
 
     glDisable( GL_TEXTURE_2D );
