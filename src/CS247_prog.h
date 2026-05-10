@@ -92,6 +92,7 @@ void computeStreamline(int x, int y);
 void computePathline(int x, int y, int t);
 
 void loadNextTimestep( void );
+void recomputeAllStreamlines( void );
 
 void LoadData( char* base_filename );
 void LoadVectorData( const char* filename );
@@ -107,7 +108,7 @@ GLuint glyphVAO, glyphVBO;
 
 std::vector<GLuint> streamlineVAOs, streamlineVBOs;
 std::vector<int>    streamlineVertexCounts;
-
+std::vector<int>    streamlineSeedsX, streamlineSeedsY;
 std::vector<GLuint> pathlineVAOs,   pathlineVBOs;
 std::vector<int>    pathlineVertexCounts;
 

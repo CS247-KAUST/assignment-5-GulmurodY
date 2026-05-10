@@ -137,6 +137,8 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
                 streamlineVAOs.clear();
                 streamlineVBOs.clear();
                 streamlineVertexCounts.clear();
+                streamlineSeedsX.clear();
+                streamlineSeedsY.clear();
                 for (int i = 0; i < (int)pathlineVAOs.size(); i++) {
                     glDeleteVertexArrays(1, &pathlineVAOs[i]);
                     glDeleteBuffers(1, &pathlineVBOs[i]);
@@ -213,6 +215,7 @@ void loadNextTimestep( void )
 {
     loaded_timestep = ( loaded_timestep + 1 ) % num_timesteps;
     DownloadScalarFieldAsTexture();
+    recomputeAllStreamlines(); 
 }
 
 
@@ -501,6 +504,24 @@ bool initApplication(int argc, char **argv)
 void reset_rendering_props( void )
 {
     num_scalar_fields = 0;
+
+    for (int i = 0; i < (int)streamlineVAOs.size(); i++) {
+        glDeleteVertexArrays(1, &streamlineVAOs[i]);
+        glDeleteBuffers(1, &streamlineVBOs[i]);
+    }
+    streamlineVAOs.clear();
+    streamlineVBOs.clear();
+    streamlineVertexCounts.clear();
+    streamlineSeedsX.clear();
+    streamlineSeedsY.clear();
+
+    for (int i = 0; i < (int)pathlineVAOs.size(); i++) {
+        glDeleteVertexArrays(1, &pathlineVAOs[i]);
+        glDeleteBuffers(1, &pathlineVBOs[i]);
+    }
+    pathlineVAOs.clear();
+    pathlineVBOs.clear();
+    pathlineVertexCounts.clear();
 }
 
 // set up the scene
@@ -810,10 +831,33 @@ void computeStreamline(int x, int y)
     streamlineVAOs.push_back(vao);
     streamlineVBOs.push_back(vbo);
     streamlineVertexCounts.push_back((int)verts.size() / 6);
+    streamlineSeedsX.push_back(x);
+    streamlineSeedsY.push_back(y);
 
     fprintf(stderr, "  streamline: %d verts (fwd=%d, bwd=%d), method=%s, dt=%.3f\n",
             (int)verts.size() / 6, (int)fwd.size(), (int)bwd.size(),
             useRK2 ? "RK2" : "Euler", dt);
+}
+
+void recomputeAllStreamlines()
+{
+    if (streamlineSeedsX.empty()) return;
+
+    std::vector<int> savedX = streamlineSeedsX;
+    std::vector<int> savedY = streamlineSeedsY;
+
+    for (int i = 0; i < (int)streamlineVAOs.size(); i++) {
+        glDeleteVertexArrays(1, &streamlineVAOs[i]);
+        glDeleteBuffers(1, &streamlineVBOs[i]);
+    }
+    streamlineVAOs.clear();
+    streamlineVBOs.clear();
+    streamlineVertexCounts.clear();
+    streamlineSeedsX.clear();
+    streamlineSeedsY.clear();
+
+    for (int i = 0; i < (int)savedX.size(); i++)
+        computeStreamline(savedX[i], savedY[i]);
 }
 
 void computePathline(int x, int y, int t)
