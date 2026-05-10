@@ -186,12 +186,15 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
         // TODO: seed streamlines & pathlines using mouse clicks
         // Hint: convert screen coords to grid coords (y-flip needed),
         //       then call computeStreamline/computePathline when enabled
+        int win_w, win_h;
+        glfwGetWindowSize(window, &win_w, &win_h);
 
         // screen → grid: y is flipped (screen y=0 is top, grid y=0 is bottom)
-        int gx = (int)(xpos / view_width  * vol_dim[0]);
-        int gy = (int)((1.0 - ypos / view_height) * vol_dim[1]);
+        int gx = (int)(xpos / (double)win_w * vol_dim[0]);
+        int gy = (int)((1.0 - ypos / (double)win_h) * vol_dim[1]);
         gx = std::max(0, std::min(gx, (int)vol_dim[0] - 1));
         gy = std::max(0, std::min(gy, (int)vol_dim[1] - 1));
+        fprintf(stderr, "Seed at grid (%d, %d), timestep %d\n", gx, gy, loaded_timestep);
 
         if (en_streamline) computeStreamline(gx, gy);
         if (en_pathline)   computePathline(gx, gy, loaded_timestep);
@@ -564,6 +567,16 @@ void render() {
         glBindVertexArray(0);
     }
 
+    if (en_pathline && !pathlineVAOs.empty()) {
+        vectorProgram.setUniform("vertexColor", glm::vec4(0.0f, 1.0f, 1.0f, 1.0f));
+        vectorProgram.setUniform("model", glm::mat4(1.0f));
+        for (int i = 0; i < (int)pathlineVAOs.size(); i++) {
+            glBindVertexArray(pathlineVAOs[i]);
+            glDrawArrays(GL_LINE_STRIP, 0, pathlineVertexCounts[i]);
+        }
+        glBindVertexArray(0);
+    }
+
 }
 
 // entry point
@@ -797,6 +810,10 @@ void computeStreamline(int x, int y)
     streamlineVAOs.push_back(vao);
     streamlineVBOs.push_back(vbo);
     streamlineVertexCounts.push_back((int)verts.size() / 6);
+
+    fprintf(stderr, "  streamline: %d verts (fwd=%d, bwd=%d), method=%s, dt=%.3f\n",
+            (int)verts.size() / 6, (int)fwd.size(), (int)bwd.size(),
+            useRK2 ? "RK2" : "Euler", dt);
 }
 
 void computePathline(int x, int y, int t)
@@ -804,8 +821,84 @@ void computePathline(int x, int y, int t)
     // TODO: compute pathlines starting from x,y position and time step t. enable switching between euler and runge kutta
     // Hint: implement trilinear interpolation (bilinear in space + linear in time),
     //       forward+backward integration advancing in both space and time
+    if (!scalar_data_loaded) return;
+
+    float maxTime = (float)(num_timesteps - 1);
+    int   maxSteps = (num_timesteps > 1) ? (int)(maxTime / dt) + 1 : 500;
+
+    auto integrate = [&](float sx, float sy, float st, float sign) -> std::vector<glm::vec2> {
+        std::vector<glm::vec2> pts;
+        pts.push_back({sx, sy});
+        float cx = sx, cy = sy, ct = st;
+
+        for (int step = 0; step < maxSteps; step++) {
+            glm::vec2 v;
+            if (useRK2) {
+                glm::vec2 k1 = trilinearInterp(cx, cy, ct);
+                if (glm::length(k1) < 1e-6f) break;
+                float mx = cx + sign * dt * k1.x;
+                float my = cy + sign * dt * k1.y;
+                float mt = ct + sign * dt;
+                glm::vec2 k2 = trilinearInterp(mx, my, mt);
+                if (glm::length(k2) < 1e-6f) break;
+                v = (k1 + k2) * 0.5f;
+            } else {
+                v = trilinearInterp(cx, cy, ct);
+                if (glm::length(v) < 1e-6f) break;
+            }
+
+            float nx = cx + sign * dt * v.x;
+            float ny = cy + sign * dt * v.y;
+            float nt = ct + sign * dt;
+            if (nx < 0 || nx >= vol_dim[0] || ny < 0 || ny >= vol_dim[1]) break;
+            if (nt < 0 || nt > maxTime) break;
+
+            cx = nx;  cy = ny;  ct = nt;
+            pts.push_back({cx, cy});
+        }
+        return pts;
+    };
+
+    std::vector<glm::vec2> fwd = integrate((float)x, (float)y, (float)t, +1.0f);
+    std::vector<glm::vec2> bwd = integrate((float)x, (float)y, (float)t, -1.0f);
+
+    std::vector<float> verts;
+    auto pushPt = [&](float gx, float gy) {
+        float nx = gx / (vol_dim[0] - 1) * 2.0f - 1.0f;
+        float ny = gy / (vol_dim[1] - 1) * 2.0f - 1.0f;
+        verts.insert(verts.end(), { nx, ny, 0, 0, 0, 0 });
+    };
+
+    for (int i = (int)bwd.size() - 1; i >= 1; i--)
+        pushPt(bwd[i].x, bwd[i].y);
+    for (auto& p : fwd)
+        pushPt(p.x, p.y);
+
+    if ((int)verts.size() < 12) return;
 
     // TODO: set any useful uniforms & update VBO & draw
+    GLuint vao, vbo;
+    glGenVertexArrays(1, &vao);
+    glGenBuffers(1, &vbo);
+
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(float), verts.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6*sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6*sizeof(float), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+
+    pathlineVAOs.push_back(vao);
+    pathlineVBOs.push_back(vbo);
+    pathlineVertexCounts.push_back((int)verts.size() / 6);
+
+    fprintf(stderr, "  pathline: %d verts (fwd=%d, bwd=%d), method=%s, dt=%.3f, num_timesteps=%d\n",
+            (int)verts.size() / 6, (int)fwd.size(), (int)bwd.size(),
+            useRK2 ? "RK2" : "Euler", dt, num_timesteps);
 }
 
 void drawGlyphs() {
@@ -816,11 +909,15 @@ void drawGlyphs() {
 
     std::vector<float> verts;
 
-    float cellW = (float)sampling_rate / (vol_dim[0] - 1) * 2.0f;
-    float cellH = (float)sampling_rate / (vol_dim[1] - 1) * 2.0f;
-    float arrowLen = std::min(cellW, cellH) * 0.45f;
-    float headLen  = arrowLen * 0.35f;
-    float headAngle = 0.45f;
+    float cellW   = (float)sampling_rate / (vol_dim[0] - 1) * 2.0f;
+    float cellH   = (float)sampling_rate / (vol_dim[1] - 1) * 2.0f;
+    float maxLen  = std::min(cellW, cellH) * 0.5f;
+    float headAngle = 0.6f;
+
+    float maxMag = 1e-6f;
+    for (int y = 0; y < (int)vol_dim[1]; y += sampling_rate)
+        for (int x = 0; x < (int)vol_dim[0]; x += sampling_rate)
+            maxMag = std::max(maxMag, glm::length(getVector(x, y, loaded_timestep)));
 
     for (int y = 0; y < (int)vol_dim[1]; y += sampling_rate) {
         for (int x = 0; x < (int)vol_dim[0]; x += sampling_rate) {
@@ -831,20 +928,26 @@ void drawGlyphs() {
 
             glm::vec2 dir = glm::normalize(v);
 
-            float nx = (float)x / (vol_dim[0] - 1) * 2.0f - 1.0f;
-            float ny = (float)y / (vol_dim[1] - 1) * 2.0f - 1.0f;
+            float scale    = mag / maxMag;
+            float arrowLen = maxLen * scale;
+            float headLen  = arrowLen * 0.45f;
 
-            float tipX = nx + dir.x * arrowLen;
-            float tipY = ny + dir.y * arrowLen;
+            float cx = (float)x / (vol_dim[0] - 1) * 2.0f - 1.0f;
+            float cy = (float)y / (vol_dim[1] - 1) * 2.0f - 1.0f;
 
-            float cosA =  cosf(headAngle), sinA = sinf(headAngle);
+            float tailX = cx - dir.x * arrowLen * 0.5f;
+            float tailY = cy - dir.y * arrowLen * 0.5f;
+            float tipX  = cx + dir.x * arrowLen * 0.5f;
+            float tipY  = cy + dir.y * arrowLen * 0.5f;
+
+            float cosA = cosf(headAngle), sinA = sinf(headAngle);
             float rx = -dir.x, ry = -dir.y;
 
-            float lx =  rx*cosA - ry*sinA,  ly =  rx*sinA + ry*cosA;  // +angle
-            float wx =  rx*cosA + ry*sinA,  wy = -rx*sinA + ry*cosA;  // -angle
+            float lx =  rx*cosA - ry*sinA,  ly =  rx*sinA + ry*cosA;
+            float wx =  rx*cosA + ry*sinA,  wy = -rx*sinA + ry*cosA;
 
-            verts.insert(verts.end(), { nx,  ny,  0, 0,0,0 });
-            verts.insert(verts.end(), { tipX, tipY, 0, 0,0,0 });
+            verts.insert(verts.end(), { tailX, tailY, 0, 0,0,0 });
+            verts.insert(verts.end(), { tipX,  tipY,  0, 0,0,0 });
             verts.insert(verts.end(), { tipX, tipY, 0, 0,0,0 });
             verts.insert(verts.end(), { tipX + lx*headLen, tipY + ly*headLen, 0, 0,0,0 });
             verts.insert(verts.end(), { tipX, tipY, 0, 0,0,0 });
@@ -863,9 +966,10 @@ void drawGlyphs() {
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6*sizeof(float), (void*)(3*sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    vectorProgram.setUniform("vertexColor", glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    vectorProgram.setUniform("vertexColor", glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
     vectorProgram.setUniform("model", glm::mat4(1.0f));
 
+    glLineWidth(1.0f);
     glDrawArrays(GL_LINES, 0, (int)verts.size() / 6);
     glBindVertexArray(0);
 }
