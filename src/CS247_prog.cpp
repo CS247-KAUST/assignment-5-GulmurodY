@@ -186,6 +186,15 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
         // TODO: seed streamlines & pathlines using mouse clicks
         // Hint: convert screen coords to grid coords (y-flip needed),
         //       then call computeStreamline/computePathline when enabled
+
+        // screen → grid: y is flipped (screen y=0 is top, grid y=0 is bottom)
+        int gx = (int)(xpos / view_width  * vol_dim[0]);
+        int gy = (int)((1.0 - ypos / view_height) * vol_dim[1]);
+        gx = std::max(0, std::min(gx, (int)vol_dim[0] - 1));
+        gy = std::max(0, std::min(gy, (int)vol_dim[1] - 1));
+
+        if (en_streamline) computeStreamline(gx, gy);
+        if (en_pathline)   computePathline(gx, gy, loaded_timestep);
     }
 }
 
@@ -542,8 +551,17 @@ void render() {
     vectorProgram.setUniform("blendFactor",  1.0f);
 
     // TODO: draw glyphs, streamlines, pathlines
-    if(en_arrow) {
+    if (en_arrow)
         drawGlyphs();
+
+    if (en_streamline && !streamlineVAOs.empty()) {
+        vectorProgram.setUniform("vertexColor", glm::vec4(1.0f, 0.5f, 0.0f, 1.0f));
+        vectorProgram.setUniform("model", glm::mat4(1.0f));
+        for (int i = 0; i < (int)streamlineVAOs.size(); i++) {
+            glBindVertexArray(streamlineVAOs[i]);
+            glDrawArrays(GL_LINE_STRIP, 0, streamlineVertexCounts[i]);
+        }
+        glBindVertexArray(0);
     }
 
 }
@@ -701,8 +719,84 @@ void computeStreamline(int x, int y)
     // TODO: compute streamlines starting from x,y position. enable switching between euler and runge kutta
     // Hint: implement bilinear interpolation of vectors, forward+backward integration,
     //       and stopping conditions (boundary, zero vector, max accumulated length)
+    if (!scalar_data_loaded) return;
+
+    int   t      = loaded_timestep;
+    float maxLen = sqrtf((float)(vol_dim[0]*vol_dim[0] + vol_dim[1]*vol_dim[1]));
+
+    // integrate in one direction (sign = +1 forward, -1 backward)
+    auto integrate = [&](float sx, float sy, float sign) -> std::vector<glm::vec2> {
+        std::vector<glm::vec2> pts;
+        pts.push_back({sx, sy});
+        float cx = sx, cy = sy, accLen = 0.0f;
+
+        while (accLen < maxLen) {
+            glm::vec2 v;
+            if (useRK2) {
+                glm::vec2 k1 = bilinearInterp(cx, cy, t);
+                if (glm::length(k1) < 1e-6f) break;
+                k1 = glm::normalize(k1);
+                float mx = cx + sign * dt * k1.x;
+                float my = cy + sign * dt * k1.y;
+                if (mx < 0 || mx >= vol_dim[0] || my < 0 || my >= vol_dim[1]) break;
+                glm::vec2 k2 = bilinearInterp(mx, my, t);
+                if (glm::length(k2) < 1e-6f) break;
+                v = glm::normalize((k1 + glm::normalize(k2)) * 0.5f);
+            } else {
+                glm::vec2 k1 = bilinearInterp(cx, cy, t);
+                if (glm::length(k1) < 1e-6f) break;
+                v = glm::normalize(k1);
+            }
+
+            float nx = cx + sign * dt * v.x;
+            float ny = cy + sign * dt * v.y;
+            if (nx < 0 || nx >= vol_dim[0] || ny < 0 || ny >= vol_dim[1]) break;
+
+            accLen += dt;
+            cx = nx;  cy = ny;
+            pts.push_back({cx, cy});
+        }
+        return pts;
+    };
+
+    std::vector<glm::vec2> fwd = integrate((float)x, (float)y, +1.0f);
+    std::vector<glm::vec2> bwd = integrate((float)x, (float)y, -1.0f);
+
+    // build vertex buffer: reversed backward (tail) + forward (head)
+    // giving one continuous LINE_STRIP through the seed point
+    std::vector<float> verts;
+    auto pushPt = [&](float gx, float gy) {
+        float nx = gx / (vol_dim[0] - 1) * 2.0f - 1.0f;
+        float ny = gy / (vol_dim[1] - 1) * 2.0f - 1.0f;
+        verts.insert(verts.end(), { nx, ny, 0, 0, 0, 0 });
+    };
+
+    for (int i = (int)bwd.size() - 1; i >= 1; i--)
+        pushPt(bwd[i].x, bwd[i].y);
+    for (auto& p : fwd)
+        pushPt(p.x, p.y);
+
+    if ((int)verts.size() < 12) return;  // need at least 2 vertices
 
     // TODO: set any useful uniforms & update VBO & draw
+    GLuint vao, vbo;
+    glGenVertexArrays(1, &vao);
+    glGenBuffers(1, &vbo);
+
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(float), verts.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6*sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6*sizeof(float), (void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+
+    streamlineVAOs.push_back(vao);
+    streamlineVBOs.push_back(vbo);
+    streamlineVertexCounts.push_back((int)verts.size() / 6);
 }
 
 void computePathline(int x, int y, int t)
